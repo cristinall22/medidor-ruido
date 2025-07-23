@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medidor de Ruido Web</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #000;
+      color: #fff;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 2em;
+      margin-bottom: 30px;
+    }
+
+    #barra {
+      width: 90%;
+      max-width: 400px;
+      height: 40px;
+      background: #444;
+      margin: 20px auto;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #nivel {
+      height: 100%;
+      width: 0%;
+      background: green;
+      transition: width 0.2s;
+    }
+
+    #valor {
+      font-size: 1.5em;
+      margin-top: 15px;
+      color: #fff;
+    }
+
+    button {
+      padding: 15px 30px;
+      font-size: 1.2em;
+      margin: 15px 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 40%;
+      max-width: 180px;
+    }
+
+    button:first-of-type {
+      background-color: #28a745;
+      color: white;
+    }
+
+    button:last-of-type {
+      background-color: #dc3545;
+      color: white;
+    }
+
+    #carita {
+      font-size: 4em;
+      width: 100px;
+      height: 100px;
+      margin: 30px auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: lightgreen;
+      transition: background-color 0.3s;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <h1>Medidor de Ruido</h1>
+
+  <div id="barra">
+    <div id="nivel"></div>
+  </div>
+
+  <div id="valor">Nivel de ruido: 0 / 100</div>
+
+  <div id="carita">🙂</div>
+
+  <button onclick="iniciarMedicion()">Iniciar</button>
+  <button onclick="detenerMedicion()">Detener</button>
+
+  <script>
+    let audioContext;
+    let analyser;
+    let dataArray;
+    let micStream;
+    let running = false;
+    let animationFrameId;
+
+    function iniciarMedicion() {
+      if (running) return;
+
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        const mic = audioContext.createMediaStreamSource(stream);
+        mic.connect(analyser);
+        analyser.fftSize = 256;
+
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        micStream = stream;
+        running = true;
+        medir();
+      }).catch(err => {
+        alert("Error al acceder al micrófono: " + err.message);
+      });
+    }
+
+    function detenerMedicion() {
+      running = false;
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (micStream) {
+        micStream.getTracks().forEach(track => track.stop());
+        micStream = null;
+      }
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+      }
+
+      // Reset UI
+      document.getElementById("nivel").style.width = "0%";
+      document.getElementById("valor").textContent = "Medición detenida";
+      const caritaDiv = document.getElementById("carita");
+      caritaDiv.textContent = "😐";
+      caritaDiv.style.backgroundColor = "#777";
+    }
+
+    function medir() {
+      if (!running) return;
+
+      analyser.getByteTimeDomainData(dataArray);
+
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const val = dataArray[i] - 128;
+        sum += val * val;
+      }
+
+      const rms = Math.sqrt(sum / dataArray.length);
+      const nivel = Math.min(100, Math.round(rms * 2));
+
+      const nivelDiv = document.getElementById("nivel");
+      const valorDiv = document.getElementById("valor");
+      const caritaDiv = document.getElementById("carita");
+
+      nivelDiv.style.width = nivel + "%";
+      valorDiv.textContent = `Nivel de ruido: ${nivel} / 100`;
+
+      if (nivel < 40) {
+        nivelDiv.style.background = "green";
+        caritaDiv.textContent = "🙂";
+        caritaDiv.style.backgroundColor = "lightgreen";
+      } else if (nivel < 70) {
+        nivelDiv.style.background = "yellow";
+        caritaDiv.textContent = "😐";
+        caritaDiv.style.backgroundColor = "khaki";
+      } else {
+        nivelDiv.style.background = "red";
+        caritaDiv.textContent = "😠";
+        caritaDiv.style.backgroundColor = "lightcoral";
+      }
+
+      animationFrameId = requestAnimationFrame(medir);
+    }
+  </script>
+</body>
+</html>
